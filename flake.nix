@@ -1,88 +1,59 @@
 {
-  description = "My simple nix config";
+  description = "A simple NixOS flake";
+
+  # the nixConfig here only affects the flake itself, not the system configuration!
+  nixConfig = {
+    # substituers will be appended to the default substituters when fetching packages
+    # nix com    extra-substituters = [munity's cache server
+    extra-substituters = [
+      "https://nix-community.cachix.org"
+    ];
+    extra-trusted-public-keys = [
+      "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+    ];
+  };
 
   inputs = {
-    # Nixpkgs
-    # nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.05";
-    # home-manager, used for managing user configuration
-    home-manager = {
-      url = "github:nix-community/home-manager/release-25.05";
-      # The `follows` keyword in inputs is used for inheritance.
-      # Here, `inputs.nixpkgs` of home-manager is kept consistent with
-      # the `inputs.nixpkgs` of the current flake,
-      # to avoid problems caused by different versions of nixpkgs.
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-    sops-nix = {
-      url = "github:mic92/sops-nix";
-      inputs.nixpkgs.follows = "nixpkgs";
+    # NixOS 官方软件源，这里使用 nixos-25.05 分支
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    home-manager.url = "github:nix-community/home-manager/release-25.05";
+    home-manager.inputs.nixpkgs.follows = "nixpkgs";
+
+    catppuccin-bat = {
+      url = "github:catppuccin/bat";
+      flake = false;
     };
   };
 
   outputs =
+    { self, nixpkgs, home-manager, ... }@inputs:
     {
-      self,
-      nixpkgs,
-      home-manager,
-      ...
-    }@inputs:
-    let
-      inherit (self) outputs;
-      # Supported systems for your flake packages, shell, etc.
-      systems = [
-        "aarch64-linux"
-        "i686-linux"
-        "x86_64-linux"
-        "aarch64-darwin"
-        "x86_64-darwin"
-      ];
-      # This is a function that generates an attribute by calling a function you
-      # pass to it, with each system as an argument
-      forAllSystems = nixpkgs.lib.genAttrs systems;
-    in
-    {
-      # Your custom packages
-      # Accessible through 'nix build', 'nix shell', etc
-      packages = forAllSystems (system: import ./pkgs nixpkgs.legacyPackages.${system});
-      # Formatter for your nix files, available through 'nix fmt'
-      # Other options beside 'alejandra' include 'nixpkgs-fmt'
-      formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.alejandra);
+      # asus 配置：使用 ./nixos/asus/configuration.nix
+      # 使用方法：nixos-rebuild switch --flake .#asus
+      nixosConfigurations.asus = nixpkgs.lib.nixosSystem {
+        modules = [
+          ./nixos/asus/configuration.nix
+        ];
+      };
 
-      # Your custom packages and modifications, exported as overlays
-      overlays = import ./overlays { inherit inputs; };
-      # Reusable nixos modules you might want to export
-      # These are usually stuff you would upstream into nixpkgs
-      nixosModules = import ./modules/nixos;
-      # Reusable home-manager modules you might want to export
-      # These are usually stuff you would upstream into home-manager
-      homeManagerModules = import ./modules/home-manager;
-
-      # NixOS configuration entrypoint
-      # Available through 'nixos-rebuild --flake .#your-hostname'
-      nixosConfigurations = {
-        # FIXME replace with your hostname
-        asus = nixpkgs.lib.nixosSystem {
-          specialArgs = { inherit inputs outputs; };
+      # server 配置：使用 ./nixos/server/configuration.nix
+      # 使用方法：nixos-rebuild switch --flake .#server
+      nixosConfigurations.server = 
+        let username = "ziyang";
+        specialArgs = { inherit username; };
+        in nixpkgs.lib.nixosSystem {
+          inherit specialArgs;
+          system = "x86_64-linux";
           modules = [
-            # > Our main nixos configuration file <
-            ./nixos/configuration.nix
-            home-manager.nixosModules.home-manager
-            {
+            ./nixos/server
+            ./users/${username}/nixos.nix 
+            home-manager.nixosModules.home-manager {
               home-manager.useGlobalPkgs = true;
               home-manager.useUserPackages = true;
-
-              # 这里的 ryan 也得替换成你的用户名
-              # 这里的 import 函数在前面 Nix 语法中介绍过了，不再赘述
-              home-manager.users.ziyang = import ./home-manager/home.nix;
-
-              # 使用 home-manager.extraSpecialArgs 自定义传递给 ./home.nix 的参数
-              # 取消注释下面这一行，就可以在 home.nix 中使用 flake 的所有 inputs 参数了
-              home-manager.extraSpecialArgs = inputs;
+              home-manager.extraSpecialArgs = inputs // specialArgs;
+              home-manager.users.${username} = import ./users/${username}/home.nix;
             }
           ];
-
         };
-      };
     };
 }
