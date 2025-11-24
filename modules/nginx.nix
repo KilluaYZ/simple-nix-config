@@ -1,6 +1,6 @@
 { pkgs, ... }:
 let
-  staticDir = "/home/ziyang/trendradar/output";
+  staticDir = "/srv/trendradar/output";
 in
 {
   services.nginx = {
@@ -21,8 +21,9 @@ in
       locations."/" = {
         index = "index.html";
         extraConfig = ''
+          charset utf-8;
           autoindex on;
-          try_files $uri $uri/ =404;
+          autoindex_localtime on;
         '';
       };
     };
